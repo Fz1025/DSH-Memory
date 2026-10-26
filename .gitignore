@@ -1,0 +1,9 @@
+state/
+config.json
+.env
+.env.*
+*.sqlite*
+*.db*
+*.log
+*.bak*
+node_modules/
