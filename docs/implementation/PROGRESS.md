@@ -1,40 +1,60 @@
 # DSH Memory 实施进度
 
-更新：2026-10-26（Asia/Shanghai）。
+更新：2026-10-27（Asia/Shanghai）。
 
-设计基线：16d7a7839c2cd3bc0cfbeced872e94c7370d0da3。详细依据见 [P0_COMPATIBILITY_AUDIT.md](P0_COMPATIBILITY_AUDIT.md)。
+设计基线：16d7a7839c2cd3bc0cfbeced872e94c7370d0da3。
+P0 文档已通过 [PR #1](https://github.com/Fz1025/DSH-Memory/pull/1) Squash 合并，main 基线为 39a664bc05ab49bca0201bf72c59813c3b90a597。
 
 | 阶段 | 状态 | 验收结果 |
 | --- | --- | --- |
-| P0 实施前兼容审查 | 审计文档完成，有保留 | 安装版本/进程入口、定向源码、离线 SQLite/FTS5、Token 账本、共享权限、inbox 解析通过；真实空会话运行门禁未验证，未标为完整运行验收通过 |
-| P1 数据与权限 | 未开始 | 无 Memory schema、归档或生产行为变更 |
-| P2～P6 | 未开始 | 未实施召回、候选、预算、后台提炼、反思或自主成长 |
+| P0 兼容审查 | 文档已合并，有保留 | 真实空会话、有效模型/预算覆盖、删除接口等运行门禁未通过，合并不代表完整运行验收 |
+| P1.1 离线数据与权限基础 | PASS（经P1.1.1修复），用户已原则批准离线验收；本次PR正式归档 | 初次独立FAIL保留；最终28+15+22=65/65，业务代码仅在本地，不接生产 |
+| P1.2～P1.4 | 未开始 | 未接真实认证/消息归档/观察面板/完整删除链路 |
+| P2～P6 | 未开始 | 未实施检索召回、候选、预算、提炼、反思或自主成长 |
 
-## 已确认
+详细依据：[P0_COMPATIBILITY_AUDIT.md](P0_COMPATIBILITY_AUDIT.md)、[P1_1_DEVELOPMENT_REPORT.md](P1_1_DEVELOPMENT_REPORT.md)。
 
-Harness 核心/agent/persona/compaction/DeepSeek 适配器为安装版 0.2.1-rc.2；bridge 0.2.1-r1、HEAD a49877f，工作树有用户既有改动；SnowLuma runtime 2.2.0、SDK/MCP 1.14.20。监听进程入口已对照，激活插件与实际 provider 未验证。
+## P1.1 初版交付（历史记录）
 
-系统 Node v24.15.0 内置 SQLite 3.51.3/FTS5 可用；SnowLuma 自带 Node v24.22.1，各自满足对应运行要求。无安装/升级依赖。
+- src/memory/ 新增 10 个文件：SQLite/迁移、权限、合成库边界、来源/任务快照、逻辑删除屏障、测试和说明。
+- 使用现有 Node 24 的 node:sqlite，无依赖变更；文件库 WAL/FK/FULL synchronous，FTS5 external-content 触发器。
+- RequestContext 可信进程签发与严格校验，bot/persona/QQ namespace 隔离，默认拒绝、deny 优先、capability/purpose、policy_version、来源交集。
+- 删除 epoch 在事务内重查，来源撤销后合成记忆及派生物不可读，旧任务不能写回；不宣称物理删除。
+- 默认关闭，显式启用也只能打开内存库或 OS 临时合成 sandbox；主聊天入口没有导入 Memory。
 
-离线验收：Token 账本脚本 exit 0、inbox 12/12、合成共享权限 6 断言、内存 SQLite/FTS/触发器/事务/安全删除语法通过。unicode61 中文单字测试命中 0，需保留设计的中文处理方案。无全量回归或真实账号验收。
+代码基线 a49877f4e58d04e47532d44b803360d0f001160d；
+本地分支 memory/p1.1-offline；
+本地 commit 3035d279107f2399233a37f600d5e3b6df435aa3。
+未向第三方 origin 推送；未创建用户代码仓库。文档分支 docs/p1.1-offline-foundation 基于 P0 合并后的最新 main，初版提交报告和进度文件，后续追加P1.1.1复验及收尾规划。
 
-## 遗留风险与阻塞
+## 初版验证与边界（历史28项，不代表最终验收）
 
-- R1：compaction/summary 的独立 usage 未在所审 Harness tokenUsage 与 bridge 折叠中计入；现有面板不能直接作全部请求账单。阻塞后续预算能力。
-- R2：共享历史撤销未清理已注入上下文；会话退役异步且 archive 非物理删除。生产归档/召回接入前需来源依赖、删除屏障及完成回执。
-- R3：逐任务 max_tokens、每次 HTTP 尝试预算、完整输入上界、统一模型和 actual usage 语义未运行验收；禁止据此放行后台调用。
-- R4：会话令牌/共享组不是完整 Memory ACL；旧工作记忆不具备可信人物和来源链，不可自动导入或扩大许可。
-- R5～R7：文件型 WAL/恢复/清理、已加载 profile、真实空会话、支持的 Harness 删除协议未验证。
-- 设计第 19 节要求的空会话门禁因本次仅允许无网络合成测试而保留；P0 文档交付完成不等于该门禁已通过。
+node --test src/memory/test/foundation.test.mjs：28 tests、28 pass、0 fail、0 skipped。
+覆盖初始化/幂等迁移/失败回滚/FK、身份与跨域拒绝、权限交集、policy/epoch、DB 关闭/坏库/WAL 竞争、FTS 同步、删除事务回滚和默认关闭。
 
-## 下一步（等待用户指令）
+完整 bridge 禁用回归、QQ 真实认证与消息、Harness 清理、物理删除/备份恢复和真实性能均未验收。FTS 缺失降级是注入能力标志的规则测试，本机实际 FTS5 可用。未实现全量设计表或持久 worker；详细偏差见开发报告。
 
-先确认如何补齐设计规定的隔离空会话门禁及 P1 开发目录/分支边界。若用户明确允许先做独立离线 P1 骨架，则最小任务为 schema/migration + store/policy + sources/epoch + RequestContext 的合成测试；不开真实归档、不导入历史、不调用模型。P1 生产接入另需权限、删除、关闭开关回归和运行接口验收。
+## 仍存阻塞
 
-## 交付与变更范围
+- P0 R1：压缩 usage 计量缺口未修改，后续硬预算仍阻塞。
+- R2：本阶段只验证合成库逻辑屏障，未清理真实 Harness 旧共享上下文。
+- R3/R6：真实空会话、有效模型/输出限额/逐 HTTP 尝试预算覆盖及实际插件仍未验证。
+- R4：离线规则不等于真实服务端身份认证、同意或管理权限实现。
+- R5/R7：临时 WAL/FTS 验证不等于生产备份恢复、物理擦除或受支持的 Harness 删除接口。
+- 代码 worktree 不含原生产目录未提交功能；未来移植必须保留其改动并重新核对。
 
-本次只交付 docs/implementation/P0_COMPATIBILITY_AUDIT.md 与本文件，通过独立文档工作目录交付到 Fz1025/DSH-Memory 的工作分支；提交/PR 编号由最终交付记录报告。本文件不自写自身 commit SHA。
+## 下一步与停止点
 
-未修改生产业务代码、角色卡或模型配置；未读取私聊正文/密钥/Cookie；未发送 QQ 或空间内容；未调用付费模型；未重启服务；未暂存或提交原项目既有改动；未修改原 remote。
+用户已原则批准P1.1离线验收，并授权完整复查后将PR #2转Ready、Squash合并。停止在正式收尾；P1.2仅规划，不开发、不建生产库。生产接入仍须单独通过运行门禁。
 
-完成本轮后停止，不自动进入 P1。
+未读取/导入真实聊天、配置凭据或生产库；未改角色卡、提示词、模型、空间发布功能或生产入口；未重启服务、未调用付费模型、未安装依赖。原工作树 Git 状态比较一致，既有改动未提交。
+
+## 最终验收与正式收尾（2026-10-27）
+
+- 初次独立验收FAIL：原28/28，边界11/15；祖先权限/策略失效与FTS补迁移两项缺陷保留为历史。
+- P1.1.1修复提交：a02b28d3f0b3f454511d7b59b3842b698ae379e1（本地独立分支，未推第三方origin）。
+- 最终离线PASS：原有28/28、原独立15/15、新增22/22，65/65，零失败/跳过。
+- [修复与复验报告](P1_1_1_FIX_AND_REACCEPTANCE.md)记录原因、修复、回滚/旧库路径和验收限制；原开发报告保持原样。
+- [正式收尾与P1.2实施建议](P1_1_CLOSEOUT_AND_P1_2_PLAN.md)记录用户批准、生产门禁、正式存储/备份/迁移和安全集成建议。
+- 本次PR以Squash归档离线文档，最终main SHA由合并后的交付回执记录，合并结果以[PR #2](https://github.com/Fz1025/DSH-Memory/pull/2)实际状态为准。
+- 文档合并不等于业务代码已集成、生产升级或真实QQ验收。P0生产运行门禁继续保留。
